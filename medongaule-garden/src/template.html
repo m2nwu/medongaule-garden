@@ -1,0 +1,271 @@
+<title>Médongaule 정원 여정</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* Layout: one fixed full-bleed WebGL stage beneath a tall scroll track.
+   Layers, back to front: 3D garden → grain/vignette → red curtain (a canvas with letter-shaped cut-outs) → the logo (also the restart button) and four season buttons. */
+:root {
+  --maple: #E80000;
+  --mugwort-beige: #BDBD89;
+  --ink: #17140C;
+  --haze: #E5D2B0;
+  --mono: ui-monospace, "SF Mono", Menlo, monospace;
+  color-scheme: dark;
+}
+html, body { background: var(--ink); color: var(--mugwort-beige); margin: 0; }
+html.locked, html.locked body { overflow: hidden; }
+#track { height: 2100vh; }
+#gl { position: fixed; inset: 0; width: 100%; height: 100%; display: block; z-index: 0; background: var(--haze); }
+.no-gl #gl { background: radial-gradient(120% 90% at 50% 25%, #E5D2B0 0%, #B8552A 50%, #2B2412 100%); }
+.grain { position: fixed; inset: -50%; z-index: 3; pointer-events: none; opacity: .08; mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+  animation: grain 1.2s steps(6) infinite; }
+@keyframes grain { 0%{transform:translate(0,0)} 20%{transform:translate(-3%,2%)} 40%{transform:translate(2%,-3%)} 60%{transform:translate(-2%,-1%)} 80%{transform:translate(3%,3%)} 100%{transform:translate(0,0)} }
+.vignette { position: fixed; inset: 0; z-index: 3; pointer-events: none; background: radial-gradient(130% 100% at 50% 45%, transparent 58%, rgba(14,10,2,.5) 100%); }
+
+#curtain { position: fixed; left: 0; top: 0; z-index: 40; width: 100vw; height: 100vh; display: block; pointer-events: none; }
+#cue { position: fixed; left: 50%; bottom: calc(28px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); z-index: 41;
+  display: grid; justify-items: center; gap: 10px; font: 400 11px/1 var(--mono); letter-spacing: .3em; text-transform: uppercase;
+  color: #FFF6E4; opacity: 0; transition: opacity 1s ease; pointer-events: none; text-shadow: 0 1px 8px rgba(20,14,4,.5); }
+#cue.show { opacity: .9; }
+#cue i { display: block; width: 1px; height: 46px; background: linear-gradient(#FFF6E4 0 50%, transparent 50%);
+  background-size: 1px 200%; animation: drip 1.8s cubic-bezier(.7,0,.3,1) infinite; }
+@keyframes drip { from { background-position: 0 100%; } to { background-position: 0 -100%; } }
+#slot { position: fixed; z-index: 0; left: max(22px, env(safe-area-inset-left, 0px)); top: calc(22px + env(safe-area-inset-top, 0px)); width: 132px; height: 28px; }
+#flylogo { position: fixed; left: 50%; top: 50%; z-index: 45; width: min(78vw, 980px); pointer-events: none; transform: translate(-50%, -50%); }
+#flylogo svg { display: block; width: 100%; height: auto; overflow: visible; }
+#flylogo.docked { transition: opacity 1.2s ease; }
+#flylogo.docked svg g { fill: var(--maple); }
+#flylogo.docked { pointer-events: auto; cursor: pointer; }
+#flylogo.docked:focus-visible { outline: 2px solid #FFF6E4; outline-offset: 8px; border-radius: 4px; }
+#flylogo.docked:hover { opacity: .72 !important; }
+
+/* season switch: four round buttons, top right */
+#seasons { position: fixed; z-index: 46; top: calc(16px + env(safe-area-inset-top, 0px)); right: max(18px, env(safe-area-inset-right, 0px));
+  display: flex; gap: 10px; margin: 0; padding: 0; list-style: none; opacity: 0; transform: translateY(-8px); pointer-events: none;
+  transition: opacity .8s ease .2s, transform .8s ease .2s; }
+#seasons.show { opacity: 1; transform: none; pointer-events: auto; }
+.season { position: relative; width: 46px; height: 46px; border-radius: 50%; border: 1px solid rgba(255,246,228,.72);
+  background: rgba(23,20,12,.22); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+  color: #FFF6E4; font: 400 16px/1 "Songti SC", "Noto Serif CJK KR", "Noto Serif KR", "AppleMyungjo", "Batang", serif; letter-spacing: 0;
+  cursor: pointer; display: grid; place-items: center; padding: 0; transition: background .4s, border-color .4s, transform .3s, color .4s;
+  text-shadow: 0 1px 6px rgba(20,14,4,.45); }
+.season::after { content: ""; position: absolute; inset: 4px; border-radius: 50%; border: 1px solid transparent; transition: border-color .4s; }
+.season:hover { transform: scale(1.07); background: rgba(23,20,12,.36); }
+.season[aria-pressed="true"] { background: var(--maple); border-color: var(--maple); text-shadow: none; }
+.season[aria-pressed="true"]::after { border-color: rgba(255,246,228,.55); }
+.season:focus-visible { outline: 2px solid #FFF6E4; outline-offset: 3px; }
+@media (max-width: 700px) { #slot { width: 108px; height: 23px; } #seasons { gap: 7px; } .season { width: 38px; height: 38px; font-size: 14px; } }
+@media (prefers-reduced-motion: reduce) { .grain, #cue i { animation: none; } }
+</style>
+
+<canvas id="gl" aria-label="메덩골정원 3D 풍경"></canvas>
+<div class="grain" aria-hidden="true"></div>
+<div class="vignette" aria-hidden="true"></div>
+<div id="slot" aria-hidden="true"></div>
+<canvas id="curtain" aria-hidden="true"></canvas>
+<div id="cue" aria-hidden="true"><span>Scroll</span><i></i></div>
+<div id="flylogo" aria-label="Médongaule, 처음부터 다시 보기">%%LOGO_SVG%%</div>
+<ul id="seasons" aria-label="계절">
+  <li><button class="season" type="button" data-s="spring" aria-pressed="false" aria-label="봄">春</button></li>
+  <li><button class="season" type="button" data-s="summer" aria-pressed="false" aria-label="여름">夏</button></li>
+  <li><button class="season" type="button" data-s="autumn" aria-pressed="true" aria-label="가을">秋</button></li>
+  <li><button class="season" type="button" data-s="winter" aria-pressed="false" aria-label="겨울">冬</button></li>
+</ul>
+<div id="track"></div>
+
+<script>
+(function () {
+  const clamp = v => Math.max(0, Math.min(1, v));
+  const outCubic = x => 1 - Math.pow(1 - x, 3);
+  const inOutCubic = x => x < .5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2;
+  const outExpo = x => x >= 1 ? 1 : 1 - Math.pow(2, -10 * x);
+  const outBack = x => { const c1 = 1.5, c3 = c1 + 1; return 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2); };
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const TEST = !!window.__TEST;
+  const root = document.documentElement;
+
+  /* ---------------- logo motion (the approved film) ---------------- */
+  const DUR = 6.0, CX = 684;
+  const order = ['M','e1','d','o','n','g','a','u','l','e2'];
+  const letters = order.map(k => { const el = document.getElementById('L_' + k); return { el, cx: +el.dataset.cx }; });
+  const cxOf = k => +document.getElementById('L_' + k).dataset.cx;
+  const leaves = [
+    { el: document.getElementById('F_leaf1'), px: 372, py: 280, start: 1.75, parentCx: cxOf('e1') },
+    { el: document.getElementById('F_leaf2'), px: 809, py: 280, start: 1.95, parentCx: cxOf('g') },
+  ];
+  function renderLogo(t) {
+    const spread = 0.09 * (1 - outCubic(clamp((t - 0.25) / 2.2)));
+    letters.forEach((L, i) => {
+      const lt = clamp((t - (0.3 + i * 0.075)) / 1.05);
+      L.el.setAttribute('transform', `translate(${((L.cx - CX) * spread).toFixed(2)} ${(270 * (1 - outExpo(lt))).toFixed(2)})`);
+    });
+    leaves.forEach(F => {
+      const lt = clamp((t - F.start) / 0.85), s = Math.max(0.0001, outBack(lt));
+      let rot = -48 * (1 - outCubic(lt)); const after = t - F.start - 0.85;
+      if (after > 0) rot += 4 * Math.sin(after * 6.5) * Math.exp(-after * 2.6);
+      F.el.setAttribute('transform', `translate(${((F.parentCx - CX) * spread).toFixed(2)} 0) translate(${F.px} ${F.py}) rotate(${rot.toFixed(2)}) scale(${s.toFixed(4)}) translate(${-F.px} ${-F.py})`);
+    });
+  }
+  // the final pose, with the leaves' settle wobble removed so the portal letters match exactly
+  function restLogo() {
+    letters.forEach(L => L.el.setAttribute('transform', 'translate(0 0)'));
+    leaves.forEach(F => F.el.removeAttribute('transform'));
+  }
+
+  /* ---------------- portal: the letters become windows, then we fly through the 'o' ---------------- */
+  const curtain = document.getElementById('curtain'), cx2 = curtain.getContext('2d');
+  const glyphs = [...order.map(k => 'L_' + k), 'F_leaf1', 'F_leaf2'].map(id => new Path2D(document.getElementById(id).getAttribute('d')));
+  let holesOn = false, zoomNow = 1;
+  const fly = document.getElementById('flylogo'), slot = document.getElementById('slot'), cue = document.getElementById('cue');
+  const VB = { x: 185, y: 218, w: 1000 };          // the logo svg's viewBox
+  const FOCUS = { x: 620, y: 307, r: 10.5 };        // inside the thick right stroke of the 'o'
+  let base = null;
+  function layout() {
+    const W = innerWidth, H = innerHeight, dpr = Math.min(devicePixelRatio || 1, 2);
+    curtain.width = Math.round(W * dpr); curtain.height = Math.round(H * dpr);
+    const box = { left: (W - fly.offsetWidth) / 2, top: (H - fly.offsetHeight) / 2, w: fly.offsetWidth };
+    const s = box.w / VB.w;
+    base = { dpr, s, tx: box.left - VB.x * s, ty: box.top - VB.y * s, fx: box.left + (FOCUS.x - VB.x) * s, fy: box.top + (FOCUS.y - VB.y) * s,
+             zmax: Math.hypot(W, H) / (FOCUS.r * s) * 1.25 };
+    setPortal(zoomNow);
+  }
+  function setPortal(z) {
+    // red field with the letters cut out; the cut-outs zoom about a point in the 'o', drifting to screen centre as we dive
+    zoomNow = z;
+    const W = innerWidth, H = innerHeight, k = outCubic(clamp((z - 1) / 6));
+    const cx = base.fx + (W / 2 - base.fx) * k, cy = base.fy + (H / 2 - base.fy) * k;
+    cx2.setTransform(base.dpr, 0, 0, base.dpr, 0, 0);
+    cx2.globalCompositeOperation = 'source-over';
+    cx2.clearRect(0, 0, W, H); cx2.fillStyle = '#E80000'; cx2.fillRect(0, 0, W, H);
+    if (!holesOn) return;
+    cx2.globalCompositeOperation = 'destination-out';
+    cx2.translate(cx, cy); cx2.scale(z, z); cx2.translate(-base.fx, -base.fy); cx2.translate(base.tx, base.ty); cx2.scale(base.s, base.s);
+    cx2.fillStyle = '#000';
+    for (const p of glyphs) cx2.fill(p, 'evenodd');
+    cx2.globalCompositeOperation = 'source-over';
+  }
+
+  /* ---------------- sequence ---------------- */
+  window.__garden = window.__garden || {};
+  window.__garden.intro = 0;
+  let phase = 'logo', logoT = 0, pStart = null, rushed = false;
+  const LOGO_HOLD = .45, OPEN = .9, DIVE = 2.4;
+
+  function lock(on) { root.classList.toggle('locked', on); }
+  function dock() {
+    const s = slot.getBoundingClientRect();
+    // re-lay the logo at its real small size (no scale transform) so the letters render crisp
+    fly.style.opacity = '0';
+    fly.classList.add('docked');
+    fly.style.width = s.width + 'px';
+    fly.style.left = (s.left + s.width / 2) + 'px';
+    fly.style.top = (s.top + s.height / 2) + 'px';
+    fly.style.transform = 'translate(-50%, -50%)';
+    requestAnimationFrame(() => requestAnimationFrame(() => { fly.style.opacity = '1'; }));
+  }
+  function finish() {
+    phase = 'done';
+    curtain.style.display = 'none';
+    window.__garden.intro = 1;
+    lock(false);
+    dock();
+    cue.classList.add('show');
+    seasonsEl.classList.add('show');
+    fly.setAttribute('role', 'button'); fly.tabIndex = 0;
+  }
+  // back to the very beginning: the film plays again and we dive in again
+  function restart() {
+    if (phase !== 'done') return;
+    window.__garden.snap = true;
+    scrollTo({ top: 0, behavior: 'instant' });
+    fly.classList.remove('docked'); fly.removeAttribute('role'); fly.tabIndex = -1; fly.blur();
+    fly.style.transition = 'none'; fly.style.opacity = '1'; fly.style.transform = 'translate(-50%, -50%)'; fly.style.width = fly.style.left = fly.style.top = '';
+    cue.classList.remove('show'); seasonsEl.classList.remove('show');
+    holesOn = false; zoomNow = 1; curtain.style.display = ''; layout();
+    phase = 'logo'; logoT = 0; rushed = false; pStart = null; tick.last = undefined;
+    window.__garden.intro = 0; window.__garden.progress = 0;
+    lock(true); renderLogo(0);
+    setTimeout(() => requestAnimationFrame(tick), 450);
+  }
+  fly.addEventListener('click', restart);
+  fly.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); restart(); } });
+
+  /* seasons */
+  const seasonsEl = document.getElementById('seasons');
+  seasonsEl.addEventListener('click', e => {
+    const b = e.target.closest('.season'); if (!b) return;
+    seasonsEl.querySelectorAll('.season').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
+    window.__garden3d && window.__garden3d.setSeason(b.dataset.s);
+  });
+  function startPortal() {
+    if (phase !== 'logo') return;
+    restLogo(); holesOn = true; layout(); setPortal(1);
+    phase = 'portal'; pStart = null;
+    if (reduce) { fly.style.transition = 'opacity .6s'; fly.style.opacity = '0'; curtain.style.transition = 'opacity .8s'; curtain.style.opacity = '0'; window.__garden.intro = 1; setTimeout(finish, 800); }
+  }
+  function tick(now) {
+    const dt = Math.min(.05, (now - (tick.last || now)) / 1000);
+    if (phase === 'logo') {
+      logoT += dt * (rushed ? 4 : 1);
+      renderLogo(Math.min(DUR, logoT));
+      if (logoT >= DUR + (rushed ? 0 : LOGO_HOLD)) startPortal();
+    } else if (phase === 'portal' && !reduce) {
+      if (pStart === null) pStart = now;
+      const p = (now - pStart) / 1000;
+      // 1) beige letters dissolve, the garden glows through them
+      fly.style.opacity = (1 - clamp(p / OPEN)).toFixed(3);
+      // 2) accelerate into the 'o'
+      const d = clamp((p - OPEN * .55) / DIVE);
+      const e = d < 1 ? Math.pow(d, 3.2) : 1;
+      setPortal(1 + (base.zmax - 1) * e);
+      window.__garden.intro = inOutCubic(clamp((p - OPEN * .2) / (DIVE + OPEN * .4)));
+      if (d >= 1) finish();
+    }
+    tick.last = now;
+    if (phase !== 'done') requestAnimationFrame(tick);
+  }
+
+  // impatient visitors: any scroll gesture fast-forwards the film
+  const rush = () => { if (phase === 'logo') rushed = true; };
+  addEventListener('wheel', rush, { passive: true });
+  addEventListener('touchmove', rush, { passive: true });
+  addEventListener('keydown', e => { if ([' ', 'ArrowDown', 'PageDown', 'Enter'].includes(e.key)) rush(); });
+
+  /* ---------------- scroll drives the journey ---------------- */
+  function update() {
+    const max = root.scrollHeight - innerHeight;
+    const g = TEST ? (window.__garden.progress || 0) : clamp(scrollY / Math.max(1, max));
+    window.__garden.progress = g;
+    if (g > .015) cue.classList.remove('show');
+  }
+  window.__garden.update = update;
+  addEventListener('scroll', update, { passive: true });
+  addEventListener('resize', () => { if (phase !== 'done') { layout(); } if (phase === 'done') { fly.style.transition = 'none'; dock(); } update(); });
+
+  if (TEST) {
+    // headless checks drive the sequence by hand
+    window.__intro = {
+      logo: t => { renderLogo(t); },
+      portal: p => { if (phase === 'logo') { restLogo(); holesOn = true; layout(); phase = 'portal'; }
+        fly.style.opacity = (1 - clamp(p / OPEN)).toFixed(3);
+        const d = clamp((p - OPEN * .55) / DIVE); setPortal(1 + (base.zmax - 1) * Math.pow(d, 3.2));
+        window.__garden.intro = inOutCubic(clamp((p - OPEN * .2) / (DIVE + OPEN * .4))); },
+      done: () => { restLogo(); finish(); },
+      restart: () => restart()
+    };
+    renderLogo(DUR);
+    layout();
+    window.__garden.intro = 1;
+  } else {
+    lock(true);
+    scrollTo(0, 0);
+    renderLogo(0);
+    layout();
+    setTimeout(() => requestAnimationFrame(tick), 300);
+  }
+  update();
+})();
+</script>
+<script>
+%%ENGINE%%
+</script>
